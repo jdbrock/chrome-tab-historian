@@ -226,3 +226,8 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+
+# Frontend build artifacts
+src/TabHistorian.Web/frontend/.next/
+src/TabHistorian.Web/frontend/out/
+src/TabHistorian.Web/wwwroot/

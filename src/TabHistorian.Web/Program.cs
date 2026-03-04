@@ -3,7 +3,7 @@ using Scalar.AspNetCore;
 using TabHistorian.Web.Data;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:17000");
+builder.WebHost.UseUrls("http://0.0.0.0:17000");
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.SetIsOriginAllowed(origin =>
     new Uri(origin).Host == "localhost").AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddOpenApi();
@@ -11,6 +11,7 @@ builder.Services.AddSingleton<TabHistorianDb>();
 
 var app = builder.Build();
 app.UseCors();
+app.UseStaticFiles();
 app.MapOpenApi();
 app.MapScalarApiReference();
 
@@ -48,5 +49,7 @@ api.MapGet("/tabs", (TabHistorianDb db, string? q, long? snapshotId, string? pro
 
     return new { items, page = p, pageSize = size, totalCount };
 });
+
+app.MapFallbackToFile("index.html");
 
 app.Run();
