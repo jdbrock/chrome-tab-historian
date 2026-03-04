@@ -227,6 +227,11 @@ ModelManifest.xml
 .idea
 __pycache__/
 
+# TabHistorian database
+*.db
+*.db-shm
+*.db-wal
+
 # Auto-generated ViewCellEx wrappers (built from ContentView sources)
 src/Trickle/Views/Cells/DateGroupCell.xaml
 src/Trickle/Views/Cells/DateGroupCell.xaml.cs
