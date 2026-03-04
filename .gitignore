@@ -216,34 +216,13 @@ ModelManifest.xml
 *.DS_Store
 
 .mfractor/
-!/tools/*
-!/tools/GitVersion/*
-!/tools/GitVersion/lib/*
-!/tools/GitVersion/lib/win32/*
-!/tools/GitVersion/lib/win32/x86/*
-!/tools/GitVersion/lib/win32/x64/*
-**/Resources/Resource.Designer.cs
- 
 .idea
 __pycache__/
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # TabHistorian database
 *.db
 *.db-shm
 *.db-wal
-
-# Auto-generated ViewCellEx wrappers (built from ContentView sources)
-src/Trickle/Views/Cells/DateGroupCell.xaml
-src/Trickle/Views/Cells/DateGroupCell.xaml.cs
-src/Trickle/Views/Cells/FindUserCell.xaml
-src/Trickle/Views/Cells/FindUserCell.xaml.cs
-src/Trickle/Views/Cells/Comments/MyChatCommentCell.xaml
-src/Trickle/Views/Cells/Comments/MyChatCommentCell.xaml.cs
-src/Trickle/Views/Cells/Comments/TheirChatCommentCell.xaml
-src/Trickle/Views/Cells/Comments/TheirChatCommentCell.xaml.cs
-src/Trickle/Views/Cells/Comments/LogChatCommentCell.xaml
-src/Trickle/Views/Cells/Comments/LogChatCommentCell.xaml.cs
-src/Trickle/Views/Cells/Comments/LogCommentCell.xaml
-src/Trickle/Views/Cells/Comments/LogCommentCell.xaml.cs
-src/Trickle/Views/Cells/Comments/ChatSeparatorLineCell.xaml
-src/Trickle/Views/Cells/Comments/ChatSeparatorLineCell.xaml.cs
