@@ -28,8 +28,12 @@ public class TabHistorianDb : IDisposable
         if (!File.Exists(DbPath))
             throw new FileNotFoundException($"Database not found at {DbPath}. Run the TabHistorian service first.");
 
-        _connection = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+        // ReadWrite needed for WAL mode (shared memory access), but query_only prevents any writes
+        _connection = new SqliteConnection($"Data Source={DbPath};Mode=ReadWrite");
         _connection.Open();
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "PRAGMA query_only=ON";
+        cmd.ExecuteNonQuery();
     }
 
     public List<SnapshotInfo> GetSnapshots()

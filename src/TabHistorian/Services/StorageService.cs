@@ -18,8 +18,23 @@ public class StorageService : IDisposable
 
         Directory.CreateDirectory(Path.GetDirectoryName(settings.ResolvedDatabasePath)!);
 
-        _connection = new SqliteConnection($"Data Source={settings.ResolvedDatabasePath}");
+        _connection = new SqliteConnection($"Data Source={settings.ResolvedDatabasePath};Default Timeout=30");
         _connection.Open();
+
+        // WAL mode allows concurrent reads (Web/Viewer) without blocking writes
+        using (var walCmd = _connection.CreateCommand())
+        {
+            walCmd.CommandText = "PRAGMA journal_mode=WAL";
+            walCmd.ExecuteNonQuery();
+        }
+
+        // Explicit busy timeout — Default Timeout in connection string may not map to SQLite's busy_timeout
+        using (var busyCmd = _connection.CreateCommand())
+        {
+            busyCmd.CommandText = "PRAGMA busy_timeout=30000";
+            busyCmd.ExecuteNonQuery();
+        }
+
         InitializeDatabase();
     }
 
@@ -62,6 +77,8 @@ public class StorageService : IDisposable
             );
 
             CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_windows_snapshot ON windows(snapshot_id);
+            CREATE INDEX IF NOT EXISTS idx_tabs_window ON tabs(window_id);
             CREATE INDEX IF NOT EXISTS idx_tabs_current_url ON tabs(current_url);
             CREATE INDEX IF NOT EXISTS idx_windows_profile ON windows(profile_name);
             CREATE INDEX IF NOT EXISTS idx_tabs_last_active ON tabs(last_active_time);
@@ -161,6 +178,7 @@ public class StorageService : IDisposable
     /// </summary>
     public void PruneSnapshots()
     {
+        _logger.LogInformation("Starting snapshot pruning");
         var now = DateTime.UtcNow;
         var today = now.Date;
         var yesterday = today.AddDays(-1);
@@ -172,6 +190,7 @@ public class StorageService : IDisposable
         using (var cmd = _connection.CreateCommand())
         {
             cmd.CommandText = "SELECT id, timestamp FROM snapshots ORDER BY timestamp";
+            _logger.LogInformation("Querying snapshots for pruning");
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -181,6 +200,7 @@ public class StorageService : IDisposable
             }
         }
 
+        _logger.LogInformation("Found {Count} snapshots to evaluate for pruning", snapshots.Count);
         if (snapshots.Count == 0) return;
 
         var toKeep = new HashSet<long>();
@@ -217,26 +237,26 @@ public class StorageService : IDisposable
 
         if (toDelete.Count == 0)
         {
-            _logger.LogDebug("No snapshots to prune");
+            _logger.LogInformation("No snapshots to prune (keeping all {Count})", toKeep.Count);
             return;
         }
 
-        using var transaction = _connection.BeginTransaction();
-        try
-        {
-            foreach (var id in toDelete)
-            {
-                DeleteSnapshot(id);
-            }
+        _logger.LogInformation("Pruning {DeleteCount} snapshots, keeping {KeepCount}", toDelete.Count, toKeep.Count);
 
-            transaction.Commit();
-            _logger.LogInformation("Pruned {Count} old snapshots, kept {Kept}", toDelete.Count, toKeep.Count);
-        }
-        catch
+        for (int i = 0; i < toDelete.Count; i++)
         {
-            transaction.Rollback();
-            throw;
+            var id = toDelete[i];
+            using var deleteCmd = _connection.CreateCommand();
+            deleteCmd.CommandText = $"""
+                DELETE FROM tabs WHERE window_id IN (SELECT id FROM windows WHERE snapshot_id = {id});
+                DELETE FROM windows WHERE snapshot_id = {id};
+                DELETE FROM snapshots WHERE id = {id};
+                """;
+            deleteCmd.ExecuteNonQuery();
+            _logger.LogInformation("Pruned snapshot {Current}/{Total} (id {Id})", i + 1, toDelete.Count, id);
         }
+
+        _logger.LogInformation("Pruning complete, kept {Kept} snapshots", toKeep.Count);
     }
 
     private static void KeepOldest(IEnumerable<(long Id, DateTime Timestamp)> snapshots, HashSet<long> toKeep)
@@ -246,19 +266,7 @@ public class StorageService : IDisposable
             toKeep.Add(oldest.Id);
     }
 
-    private void DeleteSnapshot(long snapshotId)
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            DELETE FROM tabs WHERE window_id IN (SELECT id FROM windows WHERE snapshot_id = @sid);
-            DELETE FROM windows WHERE snapshot_id = @sid;
-            DELETE FROM snapshots WHERE id = @sid;
-            """;
-        cmd.Parameters.AddWithValue("@sid", snapshotId);
-        cmd.ExecuteNonQuery();
-    }
-
-    public void BackupDatabase()
+public void BackupDatabase()
     {
         var backupDir = _settings.ResolvedBackupDirectory;
         var backupName = $"tabhistorian-{DateTime.UtcNow:yyyy-MM-dd}.db";
@@ -278,11 +286,12 @@ public class StorageService : IDisposable
 
         try
         {
-            // Use SQLite's backup API via VACUUM INTO for a consistent copy
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "VACUUM INTO @path";
-            cmd.Parameters.AddWithValue("@path", backupPath);
-            cmd.ExecuteNonQuery();
+            // Use SQLite online backup API — works cooperatively with WAL mode
+            // and doesn't require an exclusive lock on the source database
+            using var destConn = new SqliteConnection($"Data Source={backupPath}");
+            destConn.Open();
+            _connection.BackupDatabase(destConn, "main", "main");
+            destConn.Close();
 
             var backupSize = new FileInfo(backupPath).Length;
             _logger.LogInformation("Database backup complete ({BackupSize:F1} MB): {Path}",
