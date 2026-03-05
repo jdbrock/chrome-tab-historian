@@ -1,7 +1,6 @@
-using System.IO;
 using Microsoft.Data.Sqlite;
 
-namespace TabHistorian.Viewer.Data;
+namespace TabHistorian.Common;
 
 public record SnapshotInfo(long Id, string Timestamp, int WindowCount, int TabCount);
 public record ProfileInfo(string ProfileName, string ProfileDisplayName);
@@ -22,12 +21,9 @@ public class TabHistorianDb : IDisposable
 
     public string DbPath { get; }
 
-    public TabHistorianDb()
+    public TabHistorianDb(TabHistorianSettings settings)
     {
-        var defaultDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "TabHistorian");
-        DbPath = Path.Combine(defaultDir, "tabhistorian.db");
+        DbPath = settings.ResolvedDatabasePath;
 
         if (!File.Exists(DbPath))
             throw new FileNotFoundException($"Database not found at {DbPath}. Run the TabHistorian service first.");
@@ -83,27 +79,34 @@ public class TabHistorianDb : IDisposable
         return results;
     }
 
-    public List<TabRow> SearchTabs(string? query, long? snapshotId, string? profileName = null)
+    public int CountTabs(string? query, long? snapshotId, string? profileName)
     {
         using var cmd = _connection.CreateCommand();
-        var conditions = new List<string>();
-        if (snapshotId.HasValue)
-        {
-            conditions.Add("s.id = @snapshotId");
-            cmd.Parameters.AddWithValue("@snapshotId", snapshotId.Value);
-        }
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            conditions.Add("(t.title LIKE @q OR t.current_url LIKE @q OR t.navigation_history LIKE @q)");
-            cmd.Parameters.AddWithValue("@q", $"%{query}%");
-        }
-        if (!string.IsNullOrWhiteSpace(profileName))
-        {
-            conditions.Add("w.profile_name = @profileName");
-            cmd.Parameters.AddWithValue("@profileName", profileName);
-        }
+        AddFilterConditions(cmd, query, snapshotId, profileName);
+        var where = BuildWhereClause(cmd);
 
-        var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
+        cmd.CommandText = $"""
+            SELECT COUNT(*)
+            FROM tabs t
+            JOIN windows w ON w.id = t.window_id
+            JOIN snapshots s ON s.id = w.snapshot_id
+            {where}
+            """;
+
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public List<TabRow> SearchTabs(string? query, long? snapshotId, string? profileName = null) =>
+        SearchTabs(query, snapshotId, profileName, 0, int.MaxValue);
+
+    public List<TabRow> SearchTabs(string? query, long? snapshotId, string? profileName, int offset, int limit)
+    {
+        using var cmd = _connection.CreateCommand();
+        AddFilterConditions(cmd, query, snapshotId, profileName);
+        var where = BuildWhereClause(cmd);
+
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@offset", offset);
 
         cmd.CommandText = $"""
             SELECT s.id, s.timestamp,
@@ -119,6 +122,7 @@ public class TabHistorianDb : IDisposable
             JOIN snapshots s ON s.id = w.snapshot_id
             {where}
             ORDER BY s.timestamp DESC, w.profile_display_name, w.window_index, t.tab_index
+            LIMIT @limit OFFSET @offset
             """;
 
         var results = new List<TabRow>();
@@ -151,6 +155,31 @@ public class TabHistorianDb : IDisposable
                 reader.IsDBNull(25) ? "[]" : reader.GetString(25)));
         }
         return results;
+    }
+
+    private static void AddFilterConditions(SqliteCommand cmd, string? query, long? snapshotId, string? profileName)
+    {
+        if (snapshotId.HasValue)
+            cmd.Parameters.AddWithValue("@snapshotId", snapshotId.Value);
+        if (!string.IsNullOrWhiteSpace(query))
+            cmd.Parameters.AddWithValue("@q", $"%{query}%");
+        if (!string.IsNullOrWhiteSpace(profileName))
+            cmd.Parameters.AddWithValue("@profileName", profileName);
+    }
+
+    private static string BuildWhereClause(SqliteCommand cmd)
+    {
+        var conditions = new List<string>();
+        foreach (SqliteParameter p in cmd.Parameters)
+        {
+            switch (p.ParameterName)
+            {
+                case "@snapshotId": conditions.Add("s.id = @snapshotId"); break;
+                case "@q": conditions.Add("(t.title LIKE @q OR t.current_url LIKE @q OR t.navigation_history LIKE @q)"); break;
+                case "@profileName": conditions.Add("w.profile_name = @profileName"); break;
+            }
+        }
+        return conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
     }
 
     public void Dispose() => _connection.Dispose();

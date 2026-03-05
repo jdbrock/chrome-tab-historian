@@ -1,7 +1,10 @@
 using TabHistorian;
 using TabHistorian.Services;
+using TabHistorian.Common;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddSingleton(TabHistorianSettings.Load());
 
 builder.Services.AddSingleton<ChromeProfileDiscovery>();
 builder.Services.AddSingleton<VssShadowCopy>();

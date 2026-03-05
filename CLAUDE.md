@@ -9,6 +9,8 @@
 - Copy session files to a temp location before reading — never modify originals
 - Zero tolerance for any risk of Chrome data loss
 - When opening Chrome files, always use `FileShare.ReadWrite` to avoid interfering with Chrome's own locks
+- **NEVER delete the TabHistorian database** — if asked, triple-confirm with the user before proceeding
+- Always use **migrations** when changing the database schema — never rely on deleting/recreating the DB
 
 ## Project Overview
 - .NET 10 / C# background service backing up Chrome tabs every 30 minutes

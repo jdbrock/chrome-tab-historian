@@ -25,6 +25,15 @@ public class Worker(SnapshotService snapshotService, StorageService storage, IHo
             logger.LogError(ex, "Pruning failed");
         }
 
+        try
+        {
+            storage.BackupDatabase();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Backup failed");
+        }
+
         lifetime.StopApplication();
         return Task.CompletedTask;
     }

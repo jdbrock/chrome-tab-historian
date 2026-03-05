@@ -1,12 +1,13 @@
 using System.Text.Json;
 using Scalar.AspNetCore;
-using TabHistorian.Web.Data;
+using TabHistorian.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://0.0.0.0:17000");
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.SetIsOriginAllowed(origin =>
     new Uri(origin).Host == "localhost").AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton(TabHistorianSettings.Load());
 builder.Services.AddSingleton<TabHistorianDb>();
 
 var app = builder.Build();
@@ -24,7 +25,7 @@ api.MapGet("/profiles", (TabHistorianDb db) => db.GetProfiles());
 api.MapGet("/tabs", (TabHistorianDb db, string? q, long? snapshotId, string? profile, int? page, int? pageSize) =>
 {
     var p = Math.Max(1, page ?? 1);
-    var size = Math.Clamp(pageSize ?? 50, 1, 200);
+    var size = Math.Clamp(pageSize ?? 50, 1, 5000);
     var offset = (p - 1) * size;
 
     var totalCount = db.CountTabs(q, snapshotId, profile);

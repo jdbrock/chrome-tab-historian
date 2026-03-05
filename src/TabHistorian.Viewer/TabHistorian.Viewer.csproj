@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
+    <ProjectReference Include="..\TabHistorian.Common\TabHistorian.Common.csproj" />
   </ItemGroup>
 
 </Project>

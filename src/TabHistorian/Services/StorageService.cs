@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using TabHistorian.Models;
+using TabHistorian.Common;
 
 namespace TabHistorian.Services;
 
@@ -8,19 +9,16 @@ public class StorageService : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly ILogger<StorageService> _logger;
+    private readonly TabHistorianSettings _settings;
 
-    public StorageService(ILogger<StorageService> logger, IConfiguration configuration)
+    public StorageService(ILogger<StorageService> logger, TabHistorianSettings settings)
     {
         _logger = logger;
-        var defaultDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "TabHistorian");
-        var dbPath = configuration.GetValue<string>("DatabasePath")
-            ?? Path.Combine(defaultDir, "tabhistorian.db");
+        _settings = settings;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(settings.ResolvedDatabasePath)!);
 
-        _connection = new SqliteConnection($"Data Source={dbPath}");
+        _connection = new SqliteConnection($"Data Source={settings.ResolvedDatabasePath}");
         _connection.Open();
         InitializeDatabase();
     }
@@ -258,6 +256,29 @@ public class StorageService : IDisposable
             """;
         cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
+    }
+
+    public void BackupDatabase()
+    {
+        var backupDir = _settings.ResolvedBackupDirectory;
+        var backupName = $"tabhistorian-{DateTime.UtcNow:yyyy-MM-dd}.db";
+        var backupPath = Path.Combine(backupDir, backupName);
+
+        if (File.Exists(backupPath))
+        {
+            _logger.LogDebug("Backup already exists for today: {Path}", backupPath);
+            return;
+        }
+
+        Directory.CreateDirectory(backupDir);
+
+        // Use SQLite's backup API via VACUUM INTO for a consistent copy
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "VACUUM INTO @path";
+        cmd.Parameters.AddWithValue("@path", backupPath);
+        cmd.ExecuteNonQuery();
+
+        _logger.LogInformation("Database backed up to {Path}", backupPath);
     }
 
     public void Dispose()

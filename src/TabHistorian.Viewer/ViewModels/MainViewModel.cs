@@ -3,7 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
-using TabHistorian.Viewer.Data;
+using TabHistorian.Common;
 using TabHistorian.Viewer.Services;
 
 namespace TabHistorian.Viewer.ViewModels;
@@ -24,7 +24,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
-        _db = new TabHistorianDb();
+        _db = new TabHistorianDb(TabHistorianSettings.Load());
         _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _debounceTimer.Tick += (_, _) =>
         {
