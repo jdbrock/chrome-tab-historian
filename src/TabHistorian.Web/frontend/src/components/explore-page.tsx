@@ -35,7 +35,7 @@ export function ExplorePage() {
   } = useInfiniteTabs({
     snapshotId,
     profile: profileName,
-    pageSize: 200,
+    pageSize: 5000,
   });
 
   // Auto-fetch all pages for tree view
