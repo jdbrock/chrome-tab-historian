@@ -62,7 +62,7 @@ export function ExplorePage() {
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
           <Link
-            href="/"
+            href="/snapshots"
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

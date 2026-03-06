@@ -27,15 +27,23 @@ export function HomePage() {
       <div className="flex-1 flex flex-col items-center px-4 pt-16 sm:pt-24 pb-8">
         <div className="mb-8 text-center">
           <h1 className="text-lg font-medium text-muted-foreground tracking-wide">
-            Tab Historian
+            Full Snapshots
           </h1>
-          <Link
-            href="/explore"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-          >
-            <History className="h-3 w-3" />
-            Explore All Data
-          </Link>
+          <div className="flex items-center gap-3 mt-1">
+            <Link
+              href="/snapshots/explore"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <History className="h-3 w-3" />
+              Explore All Data
+            </Link>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Tab Machine
+            </Link>
+          </div>
         </div>
 
         <div className="w-full max-w-2xl mb-8">
