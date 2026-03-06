@@ -356,6 +356,14 @@ public class TabMachineReader
         if (!string.IsNullOrEmpty(ignFilter))
             conditions.Add(ignFilter);
 
+        // Exclude tabs whose entire history is chrome-internal URLs
+        conditions.Add("""
+            NOT (
+                (ti.first_url LIKE 'chrome://%' OR ti.first_url LIKE 'chrome-extension://%' OR ti.first_url = 'chrome://newtab/')
+                AND (ti.last_url LIKE 'chrome://%' OR ti.last_url LIKE 'chrome-extension://%' OR ti.last_url = 'chrome://newtab/')
+            )
+            """);
+
         if (!string.IsNullOrWhiteSpace(query))
         {
             cmd.Parameters.AddWithValue("@q", $"%{query}%");
