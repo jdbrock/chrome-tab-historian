@@ -176,6 +176,21 @@ public class StorageService : IDisposable
                 """;
             cmd.ExecuteNonQuery();
         }
+
+        if (currentVersion < 4)
+        {
+            _logger.LogInformation("Running migration v4: add local profile to synced profile names");
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE windows SET profile_name = 'synced:Personal:' || SUBSTR(profile_name, 8)
+                    WHERE profile_name LIKE 'synced:%' AND profile_name NOT LIKE 'synced:%:%';
+                UPDATE windows SET profile_display_name = profile_display_name || ' (Personal)'
+                    WHERE profile_name LIKE 'synced:Personal:%'
+                      AND profile_display_name NOT LIKE '%(%)';
+                INSERT INTO schema_version (version) VALUES (4);
+                """;
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public long SaveSnapshot(Snapshot snapshot)

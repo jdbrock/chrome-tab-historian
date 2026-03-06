@@ -123,6 +123,29 @@ public class TabMachineDb : IDisposable
                 )
                 """);
         }
+
+        // Migration 3: Add local profile name to synced profile names
+        if (!ColumnExists("tab_identities", "_m3_synced_profile"))
+        {
+            ExecuteNonQuery("ALTER TABLE tab_identities ADD COLUMN _m3_synced_profile INTEGER DEFAULT 1");
+            ExecuteNonQuery("""
+                UPDATE tab_identities SET profile_name = 'synced:Personal:' || SUBSTR(profile_name, 8)
+                    WHERE profile_name LIKE 'synced:%' AND profile_name NOT LIKE 'synced:%:%'
+                """);
+            ExecuteNonQuery("""
+                UPDATE tab_current_state SET profile_name = 'synced:Personal:' || SUBSTR(profile_name, 8)
+                    WHERE profile_name LIKE 'synced:%' AND profile_name NOT LIKE 'synced:%:%'
+                """);
+            ExecuteNonQuery("""
+                UPDATE tab_current_state SET profile_display_name = profile_display_name || ' (Personal)'
+                    WHERE profile_name LIKE 'synced:Personal:%'
+                      AND profile_display_name NOT LIKE '%(%)%'
+                """);
+            ExecuteNonQuery("""
+                UPDATE tab_events SET profile_name = 'synced:Personal:' || SUBSTR(profile_name, 8)
+                    WHERE profile_name LIKE 'synced:%' AND profile_name NOT LIKE 'synced:%:%'
+                """);
+        }
     }
 
     private void ExecuteNonQuery(string sql)

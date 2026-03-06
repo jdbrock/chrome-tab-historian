@@ -28,47 +28,43 @@ public class SyncedSessionReader
     public List<ChromeWindow> ReadSyncedSessions()
     {
         var profiles = _profileDiscovery.DiscoverProfiles();
+        var allWindows = new List<ChromeWindow>();
 
-        // All profiles share the same sync data — use the first one that has it
-        string? syncLevelDbPath = null;
         foreach (var profile in profiles)
         {
             var candidatePath = Path.Combine(profile.FullPath, SyncDataSubPath, LevelDbSubDir);
-            if (Directory.Exists(candidatePath))
-            {
-                syncLevelDbPath = candidatePath;
-                _logger.LogDebug("Found sync LevelDB in profile {Profile} at {Path}",
-                    profile.DisplayName, candidatePath);
-                break;
-            }
-        }
+            if (!Directory.Exists(candidatePath))
+                continue;
 
-        if (syncLevelDbPath == null)
-        {
-            _logger.LogDebug("No Sync Data LevelDB found in any profile");
-            return [];
-        }
+            _logger.LogDebug("Reading sync LevelDB from profile {Profile} at {Path}",
+                profile.DisplayName, candidatePath);
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"tabhistorian_sync_{Guid.NewGuid()}");
-        try
-        {
-            CopyLevelDb(syncLevelDbPath, tempDir);
-            return ReadFromLevelDb(tempDir);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to read synced sessions from {Path}", syncLevelDbPath);
-            return [];
-        }
-        finally
-        {
+            var tempDir = Path.Combine(Path.GetTempPath(), $"tabhistorian_sync_{Guid.NewGuid()}");
             try
             {
-                if (Directory.Exists(tempDir))
-                    Directory.Delete(tempDir, recursive: true);
+                CopyLevelDb(candidatePath, tempDir);
+                var windows = ReadFromLevelDb(tempDir, profile.DisplayName);
+                allWindows.AddRange(windows);
             }
-            catch { /* best effort cleanup */ }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to read synced sessions from {Path}", candidatePath);
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                        Directory.Delete(tempDir, recursive: true);
+                }
+                catch { /* best effort cleanup */ }
+            }
         }
+
+        if (allWindows.Count == 0)
+            _logger.LogDebug("No Sync Data LevelDB found in any profile");
+
+        return allWindows;
     }
 
     private void CopyLevelDb(string source, string dest)
@@ -92,7 +88,7 @@ public class SyncedSessionReader
         }
     }
 
-    private List<ChromeWindow> ReadFromLevelDb(string dbPath)
+    private List<ChromeWindow> ReadFromLevelDb(string dbPath, string localProfileDisplayName)
     {
         var headers = new Dictionary<string, ParsedHeader>();
         var tabsByTag = new Dictionary<string, Dictionary<int, ParsedTab>>();
@@ -137,21 +133,21 @@ public class SyncedSessionReader
         _logger.LogDebug("Found {Devices} synced devices with {Tabs} total tab entries",
             headers.Count, tabsByTag.Values.Sum(t => t.Count));
 
-        return AssembleWindows(headers, tabsByTag);
+        return AssembleWindows(headers, tabsByTag, localProfileDisplayName);
     }
 
     private List<ChromeWindow> AssembleWindows(
         Dictionary<string, ParsedHeader> headers,
-        Dictionary<string, Dictionary<int, ParsedTab>> tabsByTag)
+        Dictionary<string, Dictionary<int, ParsedTab>> tabsByTag,
+        string localProfileDisplayName)
     {
         var result = new List<ChromeWindow>();
 
         foreach (var (sessionTag, header) in headers)
         {
-            var profileName = $"synced:{sessionTag}";
-            var profileDisplayName = "Remote: " + (string.IsNullOrEmpty(header.ClientName)
-                ? sessionTag
-                : header.ClientName);
+            var profileName = $"synced:{localProfileDisplayName}:{sessionTag}";
+            var deviceName = string.IsNullOrEmpty(header.ClientName) ? sessionTag : header.ClientName;
+            var profileDisplayName = $"Remote: {deviceName} ({localProfileDisplayName})";
 
             tabsByTag.TryGetValue(sessionTag, out var tabsForDevice);
             int windowIndex = 0;
