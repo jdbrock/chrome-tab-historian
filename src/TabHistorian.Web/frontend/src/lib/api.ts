@@ -1,6 +1,6 @@
 import type {
   Snapshot, Profile, TabsResponse,
-  TabIdentityResponse, TabEventsResponse, TabMachineStats, TimelineTab,
+  TabIdentityResponse, TabEventsResponse, TabMachineStats, TabMachineProfile, TimelineTab,
 } from "./types";
 
 const BASE = "/api";
@@ -43,7 +43,7 @@ export async function fetchTabMachineStats(): Promise<TabMachineStats> {
   return res.json();
 }
 
-export async function fetchTabMachineProfiles(): Promise<string[]> {
+export async function fetchTabMachineProfiles(): Promise<TabMachineProfile[]> {
   const res = await fetch(`${BASE}/tabmachine/profiles`);
   if (!res.ok) throw new Error(`Failed to fetch profiles: ${res.status}`);
   return res.json();
@@ -53,6 +53,7 @@ export async function searchTabMachine(params: {
   q?: string;
   profile?: string;
   isOpen?: boolean;
+  sort?: string;
   page?: number;
   pageSize?: number;
 }): Promise<TabIdentityResponse> {
@@ -60,6 +61,7 @@ export async function searchTabMachine(params: {
   if (params.q) sp.set("q", params.q);
   if (params.profile) sp.set("profile", params.profile);
   if (params.isOpen !== undefined) sp.set("isOpen", String(params.isOpen));
+  if (params.sort) sp.set("sort", params.sort);
   if (params.page) sp.set("page", String(params.page));
   if (params.pageSize) sp.set("pageSize", String(params.pageSize));
 

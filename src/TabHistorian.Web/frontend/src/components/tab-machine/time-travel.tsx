@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, ExternalLink } from "lucide-react";
 import { useTimeline, useTabMachineProfiles, useTabMachineStats } from "@/lib/hooks";
-import { faviconUrl, domainFromUrl } from "@/lib/utils";
+import { faviconUrl, domainFromUrl, cleanTitle } from "@/lib/utils";
 import type { TimelineTab } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -99,8 +99,8 @@ export function TimeTravel() {
             <SelectContent>
               <SelectItem value="all">All profiles</SelectItem>
               {profiles.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
+                <SelectItem key={p.profileName} value={p.profileName}>
+                  {p.displayName ?? p.profileName}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -175,9 +175,14 @@ export function TimeTravel() {
                             height={16}
                             className="rounded-sm shrink-0"
                           />
-                          <span className="text-sm truncate flex-1">
-                            {tab.title || "Untitled"}
-                          </span>
+                          <a
+                            href={tab.currentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm truncate flex-1 hover:underline"
+                          >
+                            {cleanTitle(tab.title || "Untitled")}
+                          </a>
                           {tab.pinned && (
                             <Badge
                               variant="secondary"
@@ -189,6 +194,14 @@ export function TimeTravel() {
                           <span className="text-xs text-muted-foreground truncate max-w-48">
                             {domainFromUrl(tab.currentUrl)}
                           </span>
+                          <a
+                            href={tab.currentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground shrink-0"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
                         </div>
                       </Card>
                     ))}

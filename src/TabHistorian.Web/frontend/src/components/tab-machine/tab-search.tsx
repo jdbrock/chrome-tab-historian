@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LayoutGrid, List } from "lucide-react";
 import { useTabMachineSearch, useTabMachineProfiles } from "@/lib/hooks";
 import { SearchBox } from "@/components/search-box";
 import { TabIdentityCard } from "./tab-identity-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -12,19 +14,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { TabIdentity } from "@/lib/types";
+
+type ViewMode = "window" | "flat";
 
 export function TabSearch() {
   const [query, setQuery] = useState("");
   const [profile, setProfile] = useState<string | undefined>(undefined);
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<ViewMode>("window");
 
   const { data: profiles } = useTabMachineProfiles();
+
+  const effectiveIsOpen = viewMode === "window" ? true : isOpen;
+  const effectiveSort = viewMode === "window" ? "window" : undefined;
 
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useTabMachineSearch({
       q: query || undefined,
       profile,
-      isOpen,
+      isOpen: effectiveIsOpen,
+      sort: effectiveSort,
+      pageSize: viewMode === "window" ? 200 : 50,
     });
 
   const handleQueryChange = useCallback((q: string) => setQuery(q), []);
@@ -64,43 +75,69 @@ export function TabSearch() {
             <SelectContent>
               <SelectItem value="all">All profiles</SelectItem>
               {profiles.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
+                <SelectItem key={p.profileName} value={p.profileName}>
+                  {p.displayName ?? p.profileName}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
-        <Select
-          value={isOpen === undefined ? "all" : isOpen ? "open" : "closed"}
-          onValueChange={(v) =>
-            setIsOpen(v === "all" ? undefined : v === "open")
-          }
-        >
-          <SelectTrigger size="sm" className="w-auto">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All tabs</SelectItem>
-            <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-          </SelectContent>
-        </Select>
+        {viewMode === "flat" && (
+          <Select
+            value={isOpen === undefined ? "all" : isOpen ? "open" : "closed"}
+            onValueChange={(v) =>
+              setIsOpen(v === "all" ? undefined : v === "open")
+            }
+          >
+            <SelectTrigger size="sm" className="w-auto">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tabs</SelectItem>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         {!isLoading && (
           <span className="text-xs text-muted-foreground">
             {totalCount.toLocaleString()} tab{totalCount !== 1 ? "s" : ""}
           </span>
         )}
+        <div className="flex items-center rounded-md border border-border/50 ml-auto">
+          <Button
+            variant={viewMode === "window" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 rounded-r-none gap-1.5 px-3"
+            onClick={() => setViewMode("window")}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            By Window
+          </Button>
+          <Button
+            variant={viewMode === "flat" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 rounded-l-none gap-1.5 px-3"
+            onClick={() => setViewMode("flat")}
+          >
+            <List className="h-3.5 w-3.5" />
+            All Tabs
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
-        {isLoading
-          ? Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))
-          : allItems.map((identity) => (
-              <TabIdentityCard key={identity.id} identity={identity} />
-            ))}
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))
+        ) : viewMode === "window" ? (
+          <WindowGroupedFeed items={allItems} />
+        ) : (
+          allItems.map((identity) => (
+            <TabIdentityCard key={identity.id} identity={identity} />
+          ))
+        )}
         {allItems.length === 0 && !isLoading && (
           <p className="text-sm text-muted-foreground text-center py-8">
             No tabs found.
@@ -109,6 +146,50 @@ export function TabSearch() {
         <div ref={sentinelRef} />
         {isFetchingNextPage && <Skeleton className="h-24 w-full" />}
       </div>
+    </div>
+  );
+}
+
+function WindowGroupedFeed({ items }: { items: TabIdentity[] }) {
+  const groups: { key: string; profile: string; windowIndex: number; tabs: TabIdentity[] }[] = [];
+
+  for (const item of items) {
+    const key = `${item.profileName}:${item.windowIndex}`;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.tabs.push(item);
+    } else {
+      groups.push({
+        key,
+        profile: item.profileDisplayName ?? item.profileName,
+        windowIndex: item.windowIndex,
+        tabs: [item],
+      });
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div key={group.key}>
+          <div className="flex items-center gap-2 mb-1.5 px-1">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {group.profile}
+            </h3>
+            <span className="text-xs text-muted-foreground/60">
+              Window {group.windowIndex + 1}
+            </span>
+            <span className="text-xs text-muted-foreground/40">
+              {group.tabs.length} tab{group.tabs.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {group.tabs.map((identity) => (
+              <TabIdentityCard key={identity.id} identity={identity} />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

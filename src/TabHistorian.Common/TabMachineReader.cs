@@ -3,14 +3,18 @@ using Microsoft.Data.Sqlite;
 namespace TabHistorian.Common;
 
 public record TabIdentityRow(
-    long Id, string ProfileName,
+    long Id, string ProfileName, string? ProfileDisplayName,
     string FirstUrl, string FirstTitle, string FirstSeen,
     string LastUrl, string LastTitle, string LastSeen,
-    string? LastActiveTime, int EventCount, bool IsOpen);
+    string? LastActiveTime, string? FirstActiveTime, string? LastNavigated,
+    int EventCount, bool IsOpen,
+    int WindowIndex, int TabIndex);
 
 public record TabEventRow(
     long Id, long TabIdentityId, string EventType, string Timestamp,
     string? StateDelta, string? Url, string? Title, string? ProfileName);
+
+public record ProfileRow(string ProfileName, string? DisplayName);
 
 public record TabMachineStatsRow(
     int TotalTabs, int OpenTabs, int ClosedTabs, int TotalEvents,
@@ -22,27 +26,58 @@ public record CurrentStateRow(
     string ProfileName, string? ProfileDisplayName,
     string? NavigationHistory, bool IsOpen);
 
-public class TabMachineDb : IDisposable
+public class TabMachineReader
 {
-    private readonly SqliteConnection _connection;
+    private readonly string _connectionString;
+    private readonly List<string> _ignoredProfiles;
+    private readonly Dictionary<string, string> _profileDisplayNames;
 
-    public TabMachineDb(TabHistorianSettings settings)
+    public TabMachineReader(TabHistorianSettings settings)
     {
         var dbPath = settings.ResolvedTabMachineDatabasePath;
 
         if (!File.Exists(dbPath))
             throw new FileNotFoundException($"TabMachine database not found at {dbPath}. Run the TabHistorian service first.");
 
-        _connection = new SqliteConnection($"Data Source={dbPath};Mode=ReadWrite");
-        _connection.Open();
-        using var cmd = _connection.CreateCommand();
+        _connectionString = $"Data Source={dbPath};Mode=ReadWrite";
+        _ignoredProfiles = settings.IgnoredProfiles;
+        _profileDisplayNames = settings.ProfileDisplayNames;
+    }
+
+    private string? ResolveDisplayName(string profileName, string? dbDisplayName)
+    {
+        return _profileDisplayNames.TryGetValue(profileName, out var overrideName)
+            ? overrideName
+            : dbDisplayName;
+    }
+
+    private string AddIgnoredProfileParams(SqliteCommand cmd, string alias = "ti")
+    {
+        if (_ignoredProfiles.Count == 0) return "";
+        var paramNames = new List<string>();
+        for (var i = 0; i < _ignoredProfiles.Count; i++)
+        {
+            var name = $"@ign{i}";
+            paramNames.Add(name);
+            cmd.Parameters.AddWithValue(name, _ignoredProfiles[i]);
+        }
+        return $"{alias}.profile_name NOT IN ({string.Join(", ", paramNames)})";
+    }
+
+    private SqliteConnection OpenConnection()
+    {
+        var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "PRAGMA query_only=ON";
         cmd.ExecuteNonQuery();
+        return conn;
     }
 
     public TabMachineStatsRow GetStats()
     {
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT
                 (SELECT COUNT(*) FROM tab_identities),
@@ -61,20 +96,35 @@ public class TabMachineDb : IDisposable
             reader.IsDBNull(5) ? null : reader.GetString(5));
     }
 
-    public List<string> GetProfiles()
+    public List<ProfileRow> GetProfiles()
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT DISTINCT profile_name FROM tab_identities ORDER BY profile_name";
-        var results = new List<string>();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        var ignFilter = AddIgnoredProfileParams(cmd);
+        var where = string.IsNullOrEmpty(ignFilter) ? "" : $"WHERE {ignFilter}";
+        cmd.CommandText = $"""
+            SELECT ti.profile_name, cs.profile_display_name
+            FROM tab_identities ti
+            LEFT JOIN tab_current_state cs ON cs.tab_identity_id = ti.id
+            {where}
+            GROUP BY ti.profile_name
+            ORDER BY ti.profile_name
+            """;
+        var results = new List<ProfileRow>();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
-            results.Add(reader.GetString(0));
+        {
+            var profileName = reader.GetString(0);
+            var dbDisplayName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            results.Add(new ProfileRow(profileName, ResolveDisplayName(profileName, dbDisplayName)));
+        }
         return results;
     }
 
     public int CountSearch(string? query, string? profile, bool? isOpen)
     {
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         var where = BuildSearchWhere(cmd, query, profile, isOpen);
         cmd.CommandText = $"""
             SELECT COUNT(*)
@@ -85,22 +135,49 @@ public class TabMachineDb : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
-    public List<TabIdentityRow> Search(string? query, string? profile, bool? isOpen, int offset, int limit)
+    public List<TabIdentityRow> Search(string? query, string? profile, bool? isOpen, string? sort, int offset, int limit)
     {
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         var where = BuildSearchWhere(cmd, query, profile, isOpen);
         cmd.Parameters.AddWithValue("@limit", limit);
         cmd.Parameters.AddWithValue("@offset", offset);
 
+        var windowJoin = "";
+        string orderBy;
+        if (sort == "window")
+        {
+            windowJoin = """
+                LEFT JOIN (
+                    SELECT cs2.profile_name AS wp, cs2.window_index AS wi,
+                           MAX(COALESCE(ti2.last_navigated, ti2.last_active_time, ti2.last_seen)) AS max_nav
+                    FROM tab_current_state cs2
+                    JOIN tab_identities ti2 ON ti2.id = cs2.tab_identity_id
+                    WHERE cs2.is_open = 1
+                    GROUP BY cs2.profile_name, cs2.window_index
+                ) wn ON wn.wp = cs.profile_name AND wn.wi = cs.window_index
+                """;
+            orderBy = "ORDER BY wn.max_nav DESC NULLS LAST, cs.profile_name, cs.window_index, ti.last_active_time DESC NULLS LAST";
+        }
+        else
+        {
+            orderBy = "ORDER BY ti.last_active_time DESC NULLS LAST, ti.last_seen DESC";
+        }
+
         cmd.CommandText = $"""
-            SELECT ti.id, ti.profile_name, ti.first_url, ti.first_title, ti.first_seen,
+            SELECT ti.id, ti.profile_name, cs.profile_display_name,
+                   ti.first_url, ti.first_title, ti.first_seen,
                    ti.last_url, ti.last_title, ti.last_seen, ti.last_active_time,
+                   ti.first_active_time, ti.last_navigated,
                    (SELECT COUNT(*) FROM tab_events te WHERE te.tab_identity_id = ti.id) as event_count,
-                   COALESCE(cs.is_open, 0)
+                   COALESCE(cs.is_open, 0),
+                   COALESCE(cs.window_index, 0),
+                   COALESCE(cs.tab_index, 0)
             FROM tab_identities ti
             LEFT JOIN tab_current_state cs ON cs.tab_identity_id = ti.id
+            {windowJoin}
             {where}
-            ORDER BY ti.last_seen DESC
+            {orderBy}
             LIMIT @limit OFFSET @offset
             """;
 
@@ -108,20 +185,27 @@ public class TabMachineDb : IDisposable
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
+            var profileName = reader.GetString(1);
             results.Add(new TabIdentityRow(
-                reader.GetInt64(0), reader.GetString(1),
-                reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                reader.GetString(5), reader.GetString(6), reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8),
-                reader.GetInt32(9),
-                reader.GetInt32(10) != 0));
+                reader.GetInt64(0), profileName,
+                ResolveDisplayName(profileName, reader.IsDBNull(2) ? null : reader.GetString(2)),
+                reader.GetString(3), reader.GetString(4), reader.GetString(5),
+                reader.GetString(6), reader.GetString(7), reader.GetString(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.GetInt32(12),
+                reader.GetInt32(13) != 0,
+                reader.GetInt32(14),
+                reader.GetInt32(15)));
         }
         return results;
     }
 
     public List<TabEventRow> GetEvents(long? tabIdentityId, string? eventType, string? before, string? after, int offset, int limit)
     {
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         var conditions = new List<string>();
 
         if (tabIdentityId.HasValue)
@@ -175,7 +259,8 @@ public class TabMachineDb : IDisposable
 
     public int CountEvents(long? tabIdentityId, string? eventType, string? before, string? after)
     {
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         var conditions = new List<string>();
 
         if (tabIdentityId.HasValue)
@@ -211,10 +296,8 @@ public class TabMachineDb : IDisposable
 
     public List<CurrentStateRow> GetTimeline(string timestamp, string? profile)
     {
-        // Get tabs that were open at the given timestamp:
-        // - Had an Opened event at or before the timestamp
-        // - Did NOT have a Closed event at or before the timestamp (or Closed was after the timestamp)
-        using var cmd = _connection.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.Parameters.AddWithValue("@timestamp", timestamp);
 
         var profileFilter = "";
@@ -223,6 +306,9 @@ public class TabMachineDb : IDisposable
             cmd.Parameters.AddWithValue("@profile", profile);
             profileFilter = "AND ti.profile_name = @profile";
         }
+        var ignFilter = AddIgnoredProfileParams(cmd);
+        if (!string.IsNullOrEmpty(ignFilter))
+            profileFilter += $" AND {ignFilter}";
 
         cmd.CommandText = $"""
             SELECT cs.tab_identity_id, cs.current_url, cs.title, cs.pinned,
@@ -246,6 +332,7 @@ public class TabMachineDb : IDisposable
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
+            var pn = reader.GetString(7);
             results.Add(new CurrentStateRow(
                 reader.GetInt64(0), reader.GetString(1),
                 reader.IsDBNull(2) ? "" : reader.GetString(2),
@@ -253,17 +340,21 @@ public class TabMachineDb : IDisposable
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
                 reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
-                reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8),
+                pn,
+                ResolveDisplayName(pn, reader.IsDBNull(8) ? null : reader.GetString(8)),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 !reader.IsDBNull(10) && reader.GetInt32(10) != 0));
         }
         return results;
     }
 
-    private static string BuildSearchWhere(SqliteCommand cmd, string? query, string? profile, bool? isOpen)
+    private string BuildSearchWhere(SqliteCommand cmd, string? query, string? profile, bool? isOpen)
     {
         var conditions = new List<string>();
+
+        var ignFilter = AddIgnoredProfileParams(cmd);
+        if (!string.IsNullOrEmpty(ignFilter))
+            conditions.Add(ignFilter);
 
         if (!string.IsNullOrWhiteSpace(query))
         {
@@ -283,6 +374,4 @@ public class TabMachineDb : IDisposable
 
         return conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
     }
-
-    public void Dispose() => _connection.Dispose();
 }

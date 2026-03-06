@@ -1,10 +1,87 @@
 "use client";
 
 import { useTabEvents } from "@/lib/hooks";
-import { formatTimestamp } from "@/lib/utils";
+import { faviconUrl, formatTimestamp, cleanTitle } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TabIdentity } from "@/lib/types";
+
+const hiddenFields = new Set([
+  "navigationHistory", "syncTabNodeId", "tabGroupToken",
+  "extensionAppId", "windowType", "showState",
+  "url", "title", "profileName", "profileDisplayName",
+]);
+
+const fieldLabels: Record<string, string> = {
+  pinned: "Pinned",
+  isActive: "Active",
+  lastActiveTime: "Last Active",
+  windowIndex: "Window",
+  tabIndex: "Position",
+};
+
+function formatValue(key: string, val: unknown): string {
+  if (val === null || val === undefined) return "\u2014";
+  if (typeof val === "boolean") return val ? "Yes" : "No";
+  if (key === "lastActiveTime" && typeof val === "string") return formatTimestamp(val);
+  if (typeof val === "string") return val.length > 120 ? val.slice(0, 120) + "\u2026" : val;
+  return String(val);
+}
+
+function StateDelta({ raw }: { raw: string }) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const title = typeof parsed.title === "string" ? parsed.title : null;
+  const url = typeof parsed.url === "string" ? parsed.url : null;
+
+  const extraEntries = Object.entries(parsed).filter(([key]) => !hiddenFields.has(key));
+
+  return (
+    <div className="mt-1.5">
+      {(title || url) && (
+        <div className="flex items-center gap-2 min-w-0">
+          {url && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={faviconUrl(url)}
+              alt=""
+              width={14}
+              height={14}
+              className="rounded-sm shrink-0"
+            />
+          )}
+          <span className="text-sm truncate">
+            {title ? cleanTitle(title) : url}
+          </span>
+        </div>
+      )}
+      {url && (
+        <p className="text-xs text-muted-foreground/60 truncate mt-0.5 pl-[22px]">
+          {url}
+        </p>
+      )}
+      {extraEntries.length > 0 && (
+        <div className="mt-1.5 space-y-0.5 text-xs pl-[22px]">
+          {extraEntries.map(([key, val]) => (
+            <div key={key} className="flex gap-2">
+              <span className="text-muted-foreground/70 shrink-0 w-20">
+                {fieldLabels[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()}
+              </span>
+              <span className="text-muted-foreground break-all">
+                {formatValue(key, val)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const eventColors: Record<string, string> = {
   Opened: "bg-green-500/20 text-green-400",
@@ -46,6 +123,11 @@ export function EventTimeline({ identity }: EventTimelineProps) {
 
   return (
     <div className="space-y-1">
+      <div className="px-4 pt-3 pb-1">
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Events
+        </h4>
+      </div>
       {events.map((event) => (
         <div
           key={event.id}
@@ -63,31 +145,8 @@ export function EventTimeline({ identity }: EventTimelineProps) {
                 {formatTimestamp(event.timestamp)}
               </span>
             </div>
-            {event.url && (
-              <p className="text-xs text-muted-foreground truncate mt-1">
-                {event.url}
-              </p>
-            )}
-            {event.title && (
-              <p className="text-xs truncate mt-0.5">{event.title}</p>
-            )}
             {event.stateDelta && (
-              <div className="mt-1.5 text-xs text-muted-foreground bg-muted/50 rounded p-2 font-mono overflow-x-auto">
-                {Object.entries(event.stateDelta).map(([key, val]) => (
-                  <div key={key}>
-                    <span className="text-blue-400">{key}</span>:{" "}
-                    {typeof val === "string" ? (
-                      <span className="text-green-400 break-all">
-                        {val.length > 200 ? val.slice(0, 200) + "..." : val}
-                      </span>
-                    ) : (
-                      <span className="text-yellow-400">
-                        {JSON.stringify(val)}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <StateDelta raw={event.stateDelta} />
             )}
           </div>
         </div>

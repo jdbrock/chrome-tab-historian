@@ -27,6 +27,7 @@ public class TabMachineDb : IDisposable
         }
 
         InitializeSchema();
+        RunMigrations();
         logger.LogInformation("TabMachine database ready at {Path}", dbPath);
     }
 
@@ -88,6 +89,56 @@ public class TabMachineDb : IDisposable
             CREATE INDEX IF NOT EXISTS idx_tm_current_state_sync ON tab_current_state(sync_tab_node_id);
             """;
         cmd.ExecuteNonQuery();
+    }
+
+    private void RunMigrations()
+    {
+        // Migration 1: Add first_active_time and last_navigated to tab_identities
+        if (!ColumnExists("tab_identities", "first_active_time"))
+        {
+            ExecuteNonQuery("ALTER TABLE tab_identities ADD COLUMN first_active_time TEXT");
+            ExecuteNonQuery("ALTER TABLE tab_identities ADD COLUMN last_navigated TEXT");
+            ExecuteNonQuery("""
+                UPDATE tab_identities SET first_active_time = (
+                    SELECT cs.last_active_time FROM tab_current_state cs
+                    WHERE cs.tab_identity_id = tab_identities.id
+                )
+                """);
+            ExecuteNonQuery("UPDATE tab_identities SET last_navigated = first_seen");
+        }
+
+        // Migration 2: Fix last_navigated backfill — should be null unless tab actually navigated
+        if (!ColumnExists("tab_identities", "_m2_nav_fix"))
+        {
+            ExecuteNonQuery("ALTER TABLE tab_identities ADD COLUMN _m2_nav_fix INTEGER DEFAULT 1");
+            ExecuteNonQuery("""
+                UPDATE tab_identities SET last_navigated = (
+                    SELECT MAX(te.timestamp) FROM tab_events te
+                    WHERE te.tab_identity_id = tab_identities.id
+                      AND te.event_type = 'Navigated'
+                )
+                """);
+        }
+    }
+
+    private void ExecuteNonQuery(string sql)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    private bool ColumnExists(string table, string column)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table})";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.GetString(1) == column)
+                return true;
+        }
+        return false;
     }
 
     public void Dispose()

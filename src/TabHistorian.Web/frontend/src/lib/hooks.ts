@@ -57,11 +57,12 @@ export function useTabMachineSearch(params: {
   q?: string;
   profile?: string;
   isOpen?: boolean;
+  sort?: string;
   pageSize?: number;
 }) {
   const pageSize = params.pageSize ?? 50;
   return useInfiniteQuery({
-    queryKey: ["tabmachine", "search", params.q, params.profile, params.isOpen, pageSize],
+    queryKey: ["tabmachine", "search", params.q, params.profile, params.isOpen, params.sort, pageSize],
     queryFn: ({ pageParam }) =>
       searchTabMachine({ ...params, page: pageParam, pageSize }),
     initialPageParam: 1,

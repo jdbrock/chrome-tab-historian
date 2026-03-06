@@ -1,5 +1,5 @@
 @echo off
-:: Registers a scheduled task to run TabHistorian every 30 minutes with elevated privileges.
+:: Registers a scheduled task to run TabHistorian every 5 minutes with elevated privileges.
 :: Must be run as Administrator.
 
 net session >nul 2>&1
@@ -20,14 +20,14 @@ if %errorlevel% equ 0 (
 schtasks /create ^
     /tn "TabHistorian" ^
     /tr "\"%~dp0src\TabHistorian\bin\TabHistorian.exe\"" ^
-    /sc minute /mo 30 ^
+    /sc minute /mo 5 ^
     /rl highest ^
     /f
 
 if %errorlevel% equ 0 (
     echo.
     echo TabHistorian scheduled task created successfully.
-    echo It will run every 30 minutes with highest privileges.
+    echo It will run every 5 minutes with highest privileges.
 ) else (
     echo.
     echo ERROR: Failed to create scheduled task.

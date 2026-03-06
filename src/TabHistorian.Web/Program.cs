@@ -10,7 +10,7 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.SetIsOriginAllowed(origi
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton(TabHistorianSettings.Load());
 builder.Services.AddSingleton<TabHistorianDb>();
-builder.Services.AddSingleton<TabHistorian.Common.TabMachineDb>();
+builder.Services.AddSingleton<TabMachineReader>();
 
 var app = builder.Build();
 app.UseCors();
@@ -56,21 +56,21 @@ api.MapGet("/tabs", (TabHistorianDb db, string? q, long? snapshotId, string? pro
 // Tab Machine endpoints
 var tm = api.MapGroup("/tabmachine");
 
-tm.MapGet("/stats", (TabHistorian.Common.TabMachineDb db) => db.GetStats());
+tm.MapGet("/stats", (TabMachineReader db) => db.GetStats());
 
-tm.MapGet("/profiles", (TabHistorian.Common.TabMachineDb db) => db.GetProfiles());
+tm.MapGet("/profiles", (TabMachineReader db) => db.GetProfiles());
 
-tm.MapGet("/search", (TabHistorian.Common.TabMachineDb db, string? q, string? profile, bool? isOpen, int? page, int? pageSize) =>
+tm.MapGet("/search", (TabMachineReader db, string? q, string? profile, bool? isOpen, string? sort, int? page, int? pageSize) =>
 {
     var p = Math.Max(1, page ?? 1);
     var size = Math.Clamp(pageSize ?? 50, 1, 5000);
     var offset = (p - 1) * size;
     var totalCount = db.CountSearch(q, profile, isOpen);
-    var items = db.Search(q, profile, isOpen, offset, size);
+    var items = db.Search(q, profile, isOpen, sort, offset, size);
     return new { items, page = p, pageSize = size, totalCount };
 });
 
-tm.MapGet("/events", (TabHistorian.Common.TabMachineDb db, long? tabIdentityId, string? eventType, string? before, string? after, int? page, int? pageSize) =>
+tm.MapGet("/events", (TabMachineReader db, long? tabIdentityId, string? eventType, string? before, string? after, int? page, int? pageSize) =>
 {
     var p = Math.Max(1, page ?? 1);
     var size = Math.Clamp(pageSize ?? 50, 1, 5000);
@@ -80,7 +80,7 @@ tm.MapGet("/events", (TabHistorian.Common.TabMachineDb db, long? tabIdentityId, 
     return new { items, page = p, pageSize = size, totalCount };
 });
 
-tm.MapGet("/timeline", (TabHistorian.Common.TabMachineDb db, string timestamp, string? profile) =>
+tm.MapGet("/timeline", (TabMachineReader db, string timestamp, string? profile) =>
     db.GetTimeline(timestamp, profile));
 
 app.MapFallbackToFile("index.html");

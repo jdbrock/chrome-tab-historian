@@ -240,7 +240,7 @@ public class TabMachineService
                 eventCounts[eventType] = eventCounts.GetValueOrDefault(eventType) + 1;
                 var deltaJson = JsonSerializer.Serialize(meaningfulDelta, JsonSerializerOptions.Web);
                 RecordEvent(prev.TabIdentityId, eventType, timestamp, deltaJson, curr);
-                UpdateTabIdentity(prev.TabIdentityId, curr, timestamp);
+                UpdateTabIdentity(prev.TabIdentityId, curr, timestamp, navigated: eventType == TabEventType.Navigated);
             }
 
             transaction.Commit();
@@ -418,8 +418,8 @@ public class TabMachineService
         using var cmd = _db.Connection.CreateCommand();
         cmd.CommandText = """
             INSERT INTO tab_identities (profile_name, first_url, first_title, first_seen,
-                last_url, last_title, last_seen, last_active_time)
-            VALUES (@pn, @fu, @ft, @fs, @lu, @lt, @ls, @lat)
+                last_url, last_title, last_seen, last_active_time, first_active_time, last_navigated)
+            VALUES (@pn, @fu, @ft, @fs, @lu, @lt, @ls, @lat, @fat, @ln)
             RETURNING id
             """;
         cmd.Parameters.AddWithValue("@pn", tab.ProfileName);
@@ -430,21 +430,31 @@ public class TabMachineService
         cmd.Parameters.AddWithValue("@lt", tab.Title);
         cmd.Parameters.AddWithValue("@ls", timestamp.ToString("O"));
         cmd.Parameters.AddWithValue("@lat", (object?)tab.LastActiveTime ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@fat", (object?)tab.LastActiveTime ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@ln", DBNull.Value);
         return (long)cmd.ExecuteScalar()!;
     }
 
-    private void UpdateTabIdentity(long identityId, SnapshotTab tab, DateTime timestamp)
+    private void UpdateTabIdentity(long identityId, SnapshotTab tab, DateTime timestamp, bool navigated)
     {
         using var cmd = _db.Connection.CreateCommand();
-        cmd.CommandText = """
-            UPDATE tab_identities
-            SET last_url = @lu, last_title = @lt, last_seen = @ls, last_active_time = @lat
-            WHERE id = @id
-            """;
+        cmd.CommandText = navigated
+            ? """
+              UPDATE tab_identities
+              SET last_url = @lu, last_title = @lt, last_seen = @ls, last_active_time = @lat, last_navigated = @ln
+              WHERE id = @id
+              """
+            : """
+              UPDATE tab_identities
+              SET last_url = @lu, last_title = @lt, last_seen = @ls, last_active_time = @lat
+              WHERE id = @id
+              """;
         cmd.Parameters.AddWithValue("@lu", tab.Url);
         cmd.Parameters.AddWithValue("@lt", tab.Title);
         cmd.Parameters.AddWithValue("@ls", timestamp.ToString("O"));
         cmd.Parameters.AddWithValue("@lat", (object?)tab.LastActiveTime ?? DBNull.Value);
+        if (navigated)
+            cmd.Parameters.AddWithValue("@ln", timestamp.ToString("O"));
         cmd.Parameters.AddWithValue("@id", identityId);
         cmd.ExecuteNonQuery();
     }

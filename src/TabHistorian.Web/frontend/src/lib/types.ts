@@ -44,10 +44,16 @@ export interface TabsResponse {
   totalCount: number;
 }
 
+export interface TabMachineProfile {
+  profileName: string;
+  displayName: string | null;
+}
+
 // Tab Machine types
 export interface TabIdentity {
   id: number;
   profileName: string;
+  profileDisplayName: string | null;
   firstUrl: string;
   firstTitle: string;
   firstSeen: string;
@@ -55,8 +61,12 @@ export interface TabIdentity {
   lastTitle: string;
   lastSeen: string;
   lastActiveTime: string | null;
+  firstActiveTime: string | null;
+  lastNavigated: string | null;
   eventCount: number;
   isOpen: boolean;
+  windowIndex: number;
+  tabIndex: number;
 }
 
 export interface TabIdentityResponse {
@@ -71,7 +81,7 @@ export interface TabEvent {
   tabIdentityId: number;
   eventType: string;
   timestamp: string;
-  stateDelta: Record<string, unknown> | null;
+  stateDelta: string | null;
   url: string | null;
   title: string | null;
   profileName: string | null;

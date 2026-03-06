@@ -21,6 +21,10 @@ export function formatTimestamp(iso: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+export function cleanTitle(title: string): string {
+  return title.replace(/💤\s?/g, "");
+}
+
 export function faviconUrl(pageUrl: string): string {
   try {
     const domain = new URL(pageUrl).hostname;
