@@ -3,7 +3,7 @@ using TabHistorian.Models;
 namespace TabHistorian.Services;
 
 /// <summary>
-/// Orchestrates a full backup: discovers profiles, reads sessions, saves snapshot.
+/// Orchestrates Chrome tab reading and snapshot saving as separate operations.
 /// </summary>
 public class SnapshotService
 {
@@ -11,7 +11,6 @@ public class SnapshotService
     private readonly SessionFileReader _sessionReader;
     private readonly SyncedSessionReader _syncedSessionReader;
     private readonly StorageService _storage;
-    private readonly TabTrackingService _tabTracking;
     private readonly ILogger<SnapshotService> _logger;
 
     public SnapshotService(
@@ -19,30 +18,29 @@ public class SnapshotService
         SessionFileReader sessionReader,
         SyncedSessionReader syncedSessionReader,
         StorageService storage,
-        TabTrackingService tabTracking,
         ILogger<SnapshotService> logger)
     {
         _profileDiscovery = profileDiscovery;
         _sessionReader = sessionReader;
         _syncedSessionReader = syncedSessionReader;
         _storage = storage;
-        _tabTracking = tabTracking;
         _logger = logger;
     }
 
-    public void TakeSnapshot()
+    /// <summary>
+    /// Reads current Chrome state into memory without writing to the database.
+    /// </summary>
+    public (List<ChromeWindow> Windows, DateTime Timestamp)? ReadCurrentState()
     {
         var profiles = _profileDiscovery.DiscoverProfiles();
         if (profiles.Count == 0)
         {
-            _logger.LogWarning("No Chrome profiles found, skipping snapshot");
-            return;
+            _logger.LogWarning("No Chrome profiles found");
+            return null;
         }
 
-        _logger.LogInformation("Taking snapshot across {Count} profiles", profiles.Count);
+        _logger.LogInformation("Reading Chrome state across {Count} profiles", profiles.Count);
 
-        // Create a VSS shadow copy so we can read Chrome's locked session files.
-        // This requires elevation; if not elevated, locked files will be skipped.
         _sessionReader.EnsureVssSnapshot(profiles[0].FullPath);
 
         var allWindows = new List<ChromeWindow>();
@@ -67,7 +65,6 @@ public class SnapshotService
             _sessionReader.ReleaseVssSnapshot();
         }
 
-        // Read synced tabs from other devices
         try
         {
             var syncedWindows = _syncedSessionReader.ReadSyncedSessions();
@@ -86,29 +83,36 @@ public class SnapshotService
 
         if (allWindows.Count == 0)
         {
-            _logger.LogInformation("No open windows found (Chrome may not be running), skipping snapshot");
-            return;
+            _logger.LogInformation("No open windows found (Chrome may not be running)");
+            return null;
         }
 
+        return (allWindows, DateTime.UtcNow);
+    }
+
+    /// <summary>
+    /// Saves a full snapshot to FullSnapshots.db.
+    /// </summary>
+    public long SaveSnapshot(List<ChromeWindow> windows, DateTime timestamp)
+    {
         var snapshot = new Snapshot
         {
-            Timestamp = DateTime.UtcNow,
-            Windows = allWindows
+            Timestamp = timestamp,
+            Windows = windows
         };
 
-        int totalTabs = allWindows.Sum(w => w.Tabs.Count);
+        int totalTabs = windows.Sum(w => w.Tabs.Count);
         var snapshotId = _storage.SaveSnapshot(snapshot);
 
-        try
-        {
-            _tabTracking.ProcessSnapshot(snapshotId, snapshot.Timestamp);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Tab tracking failed for snapshot {Id}, snapshot was still saved", snapshotId);
-        }
+        _logger.LogInformation("Snapshot saved: {Windows} windows, {Tabs} tabs", windows.Count, totalTabs);
+        return snapshotId;
+    }
 
-        _logger.LogInformation("Snapshot complete: {Windows} windows, {Tabs} tabs across {Profiles} profiles",
-            allWindows.Count, totalTabs, profiles.Count);
+    /// <summary>
+    /// Returns the timestamp of the latest snapshot, or null if none exist.
+    /// </summary>
+    public DateTime? GetLatestSnapshotTimestamp()
+    {
+        return _storage.GetLatestSnapshotTimestamp();
     }
 }

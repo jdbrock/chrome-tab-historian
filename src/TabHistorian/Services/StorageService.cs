@@ -163,6 +163,19 @@ public class StorageService : IDisposable
                 """;
             cmd.ExecuteNonQuery();
         }
+
+        if (currentVersion < 3)
+        {
+            _logger.LogInformation("Running migration v3: remove tab tracking tables (moved to TabMachine.db)");
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                DROP TABLE IF EXISTS tab_identity_map;
+                DROP TABLE IF EXISTS tab_events;
+                DROP TABLE IF EXISTS tab_identities;
+                INSERT INTO schema_version (version) VALUES (3);
+                """;
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public long SaveSnapshot(Snapshot snapshot)
@@ -389,10 +402,15 @@ public void BackupDatabase()
         }
     }
 
-    /// <summary>
-    /// Exposes the connection for TabTrackingService to share the same transaction context.
-    /// </summary>
-    internal SqliteConnection Connection => _connection;
+    public DateTime? GetLatestSnapshotTimestamp()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT timestamp FROM snapshots ORDER BY timestamp DESC LIMIT 1";
+        var result = cmd.ExecuteScalar();
+        if (result is string ts)
+            return DateTime.Parse(ts, null, System.Globalization.DateTimeStyles.RoundtripKind);
+        return null;
+    }
 
     public void Dispose()
     {

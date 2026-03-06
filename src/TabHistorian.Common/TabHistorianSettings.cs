@@ -5,10 +5,12 @@ namespace TabHistorian.Common;
 public class TabHistorianSettings
 {
     public string DatabasePath { get; set; } = "tabhistorian.db";
+    public string TabMachineDatabasePath { get; set; } = "TabMachine.db";
     public string BackupDirectory { get; set; } = "backups";
 
     public required string SettingsDirectory { get; init; }
     public required string ResolvedDatabasePath { get; init; }
+    public required string ResolvedTabMachineDatabasePath { get; init; }
     public required string ResolvedBackupDirectory { get; init; }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -27,6 +29,7 @@ public class TabHistorianSettings
         var settingsPath = Path.Combine(settingsDir, "settings.json");
 
         string databasePath = "tabhistorian.db";
+        string tabMachineDatabasePath = "TabMachine.db";
         string backupDirectory = "backups";
 
         if (File.Exists(settingsPath))
@@ -36,21 +39,25 @@ public class TabHistorianSettings
 
             if (doc.TryGetProperty("databasePath", out var dbProp) && dbProp.ValueKind == JsonValueKind.String)
                 databasePath = dbProp.GetString()!;
+            if (doc.TryGetProperty("tabMachineDatabasePath", out var tmProp) && tmProp.ValueKind == JsonValueKind.String)
+                tabMachineDatabasePath = tmProp.GetString()!;
             if (doc.TryGetProperty("backupDirectory", out var backupProp) && backupProp.ValueKind == JsonValueKind.String)
                 backupDirectory = backupProp.GetString()!;
         }
         else
         {
-            var defaults = new { databasePath, backupDirectory };
+            var defaults = new { databasePath, tabMachineDatabasePath, backupDirectory };
             File.WriteAllText(settingsPath, JsonSerializer.Serialize(defaults, JsonOptions));
         }
 
         return new TabHistorianSettings
         {
             DatabasePath = databasePath,
+            TabMachineDatabasePath = tabMachineDatabasePath,
             BackupDirectory = backupDirectory,
             SettingsDirectory = settingsDir,
             ResolvedDatabasePath = ResolvePath(settingsDir, databasePath),
+            ResolvedTabMachineDatabasePath = ResolvePath(settingsDir, tabMachineDatabasePath),
             ResolvedBackupDirectory = ResolvePath(settingsDir, backupDirectory),
         };
     }
