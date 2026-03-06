@@ -2,7 +2,7 @@
 
 ## Lucide Icons
 
-The application icon is derived from the [Lucide](https://lucide.dev/) "history" icon.
+The web frontend uses icons from [Lucide](https://lucide.dev/) via the `lucide-react` package.
 
 ```
 ISC License
