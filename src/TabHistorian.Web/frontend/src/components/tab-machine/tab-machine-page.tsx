@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+
 import { History } from "lucide-react";
 import { useTabMachineStats } from "@/lib/hooks";
 import { formatTimestamp } from "@/lib/utils";
@@ -13,11 +14,9 @@ export function TabMachinePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <div className="flex-1 flex flex-col items-center px-4 pt-12 sm:pt-16 pb-8">
-        <div className="mb-6 text-center">
-          <h1 className="text-lg font-medium text-muted-foreground tracking-wide">
-            Tab Machine
-          </h1>
+      <div className="flex-1 flex flex-col items-center px-4 pt-2 sm:pt-4 pb-8">
+        <div className="mb-2 text-center">
+          <img src="/logo.png" alt="Tab Historian" className="mx-auto w-56" />
           {stats && (
             <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground justify-center">
               <span>{stats.totalTabs.toLocaleString()} tabs tracked</span>

@@ -2,7 +2,8 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { History } from "lucide-react";
+
+import { History, Cog } from "lucide-react";
 import { useProfiles } from "@/lib/hooks";
 import {
   Select,
@@ -24,12 +25,11 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <div className="flex-1 flex flex-col items-center px-4 pt-16 sm:pt-24 pb-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-lg font-medium text-muted-foreground tracking-wide">
-            Full Snapshots
-          </h1>
-          <div className="flex items-center gap-3 mt-1">
+      <div className="flex-1 flex flex-col items-center px-4 pt-2 sm:pt-4 pb-8">
+        <div className="mb-2 text-center">
+          <img src="/logo.png" alt="Tab Historian" className="mx-auto w-56" />
+          <h1 className="text-lg font-medium text-muted-foreground tracking-wide mt-1">Full Snapshots</h1>
+          <div className="flex items-center justify-center gap-3 mt-1">
             <Link
               href="/snapshots/explore"
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -41,6 +41,7 @@ export function HomePage() {
               href="/"
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
+              <Cog className="h-3 w-3" />
               Tab Machine
             </Link>
           </div>
@@ -50,7 +51,7 @@ export function HomePage() {
           <SearchBox onQueryChange={handleQueryChange} />
         </div>
 
-        <div className="flex items-center gap-4 mb-8">
+        <div className="w-full max-w-2xl flex items-center gap-4 mb-8">
           {profiles && profiles.length > 1 && (
             <Select
               value={profile ?? "all"}
