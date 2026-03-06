@@ -105,7 +105,9 @@ Opens on `http://localhost:17000`.
 To start the web server automatically at logon:
 
 1. Build the project: `dotnet build src/TabHistorian.Web`
-2. Run `RegisterWebServer.bat` as Administrator The web frontend includes:
+2. Run `RegisterWebServer.bat` as Administrator
+
+The web frontend includes:
 
 - **Tab Machine** — event-sourced tab tracking with search across all tracked tabs and time travel to view tab state at any point in history
 - **Full Snapshots** — browse snapshots with live search, infinite scroll, and profile filtering

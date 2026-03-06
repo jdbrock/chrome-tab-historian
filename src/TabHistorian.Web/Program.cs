@@ -4,7 +4,18 @@ using Scalar.AspNetCore;
 using TabHistorian.Common;
 using TabHistorian.Web;
 
-var builder = WebApplication.CreateBuilder(args);
+var exeDir = AppContext.BaseDirectory;
+// Resolve wwwroot relative to exe — in dev it's at ../wwwroot, in flat bin/ it could be alongside
+var wwwrootPath = Path.Combine(exeDir, "wwwroot");
+if (!Directory.Exists(wwwrootPath))
+    wwwrootPath = Path.Combine(exeDir, "..", "wwwroot");
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = exeDir,
+    WebRootPath = Path.GetFullPath(wwwrootPath)
+});
 builder.WebHost.UseUrls("http://0.0.0.0:17000");
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.SetIsOriginAllowed(origin =>
     new Uri(origin).Host == "localhost").AllowAnyHeader().AllowAnyMethod()));
