@@ -204,6 +204,7 @@ public class SyncedSessionReader
                         Pinned = syncTab.Pinned,
                         LastActiveTime = UnixMillisToDateTime(syncTab.LastActiveTimeMillis),
                         ExtensionAppId = syncTab.ExtensionAppId,
+                        SyncTabNodeId = $"{sessionTag}/{tabNodeId}",
                         NavigationHistory = navEntries
                     });
                 }

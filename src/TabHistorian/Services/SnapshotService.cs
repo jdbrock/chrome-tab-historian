@@ -11,6 +11,7 @@ public class SnapshotService
     private readonly SessionFileReader _sessionReader;
     private readonly SyncedSessionReader _syncedSessionReader;
     private readonly StorageService _storage;
+    private readonly TabTrackingService _tabTracking;
     private readonly ILogger<SnapshotService> _logger;
 
     public SnapshotService(
@@ -18,12 +19,14 @@ public class SnapshotService
         SessionFileReader sessionReader,
         SyncedSessionReader syncedSessionReader,
         StorageService storage,
+        TabTrackingService tabTracking,
         ILogger<SnapshotService> logger)
     {
         _profileDiscovery = profileDiscovery;
         _sessionReader = sessionReader;
         _syncedSessionReader = syncedSessionReader;
         _storage = storage;
+        _tabTracking = tabTracking;
         _logger = logger;
     }
 
@@ -94,7 +97,17 @@ public class SnapshotService
         };
 
         int totalTabs = allWindows.Sum(w => w.Tabs.Count);
-        _storage.SaveSnapshot(snapshot);
+        var snapshotId = _storage.SaveSnapshot(snapshot);
+
+        try
+        {
+            _tabTracking.ProcessSnapshot(snapshotId, snapshot.Timestamp);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Tab tracking failed for snapshot {Id}, snapshot was still saved", snapshotId);
+        }
+
         _logger.LogInformation("Snapshot complete: {Windows} windows, {Tabs} tabs across {Profiles} profiles",
             allWindows.Count, totalTabs, profiles.Count);
     }

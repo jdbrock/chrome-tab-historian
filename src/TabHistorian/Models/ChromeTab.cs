@@ -9,5 +9,6 @@ public class ChromeTab
     public DateTime? LastActiveTime { get; set; }
     public string? TabGroupToken { get; set; }
     public string? ExtensionAppId { get; set; }
+    public string? SyncTabNodeId { get; set; }
     public List<NavigationEntry> NavigationHistory { get; set; } = [];
 }

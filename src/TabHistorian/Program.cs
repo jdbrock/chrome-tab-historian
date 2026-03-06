@@ -29,6 +29,10 @@ try
     builder.Services.AddSingleton<SessionFileReader>();
     builder.Services.AddSingleton<StorageService>();
     builder.Services.AddSingleton<SyncedSessionReader>();
+    builder.Services.AddSingleton<TabTrackingService>(sp =>
+        new TabTrackingService(
+            sp.GetRequiredService<StorageService>().Connection,
+            sp.GetRequiredService<ILogger<TabTrackingService>>()));
     builder.Services.AddSingleton<SnapshotService>();
     builder.Services.AddHostedService<Worker>();
 

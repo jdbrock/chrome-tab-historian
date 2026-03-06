@@ -2,7 +2,7 @@ using TabHistorian.Services;
 
 namespace TabHistorian;
 
-public class Worker(SnapshotService snapshotService, StorageService storage, IHostApplicationLifetime lifetime, ILogger<Worker> logger) : BackgroundService
+public class Worker(SnapshotService snapshotService, StorageService storage, TabTrackingService tabTracking, IHostApplicationLifetime lifetime, ILogger<Worker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -16,6 +16,16 @@ public class Worker(SnapshotService snapshotService, StorageService storage, IHo
         catch (Exception ex)
         {
             logger.LogError(ex, "Backup failed");
+        }
+
+        // Retroactively process existing snapshots that predate tab tracking
+        try
+        {
+            tabTracking.ProcessExistingSnapshots();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Retroactive tab tracking failed");
         }
 
         try

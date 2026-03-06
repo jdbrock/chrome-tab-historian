@@ -36,6 +36,7 @@ public class StorageService : IDisposable
         }
 
         InitializeDatabase();
+        RunMigrations();
     }
 
     private void InitializeDatabase()
@@ -86,6 +87,84 @@ public class StorageService : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    private void RunMigrations()
+    {
+        // Create schema_version table if it doesn't exist
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
+            cmd.ExecuteNonQuery();
+        }
+
+        int currentVersion;
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COALESCE(MAX(version), 0) FROM schema_version";
+            currentVersion = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        if (currentVersion < 1)
+        {
+            _logger.LogInformation("Running migration v1: tab_identities and tab_events tables");
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS tab_identities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_name TEXT NOT NULL,
+                    first_url TEXT NOT NULL,
+                    first_title TEXT NOT NULL DEFAULT '',
+                    first_seen TEXT NOT NULL,
+                    last_url TEXT NOT NULL,
+                    last_title TEXT NOT NULL DEFAULT '',
+                    last_seen TEXT NOT NULL,
+                    last_active_time TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS tab_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tab_identity_id INTEGER NOT NULL REFERENCES tab_identities(id),
+                    event_type TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    snapshot_id INTEGER,
+                    url TEXT,
+                    title TEXT,
+                    old_url TEXT,
+                    old_title TEXT,
+                    profile_name TEXT,
+                    window_index INTEGER,
+                    tab_index INTEGER
+                );
+
+                CREATE TABLE IF NOT EXISTS tab_identity_map (
+                    tab_id INTEGER PRIMARY KEY REFERENCES tabs(id),
+                    tab_identity_id INTEGER NOT NULL REFERENCES tab_identities(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_tab_identities_profile ON tab_identities(profile_name);
+                CREATE INDEX IF NOT EXISTS idx_tab_events_identity ON tab_events(tab_identity_id);
+                CREATE INDEX IF NOT EXISTS idx_tab_events_type ON tab_events(event_type);
+                CREATE INDEX IF NOT EXISTS idx_tab_events_timestamp ON tab_events(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_tab_events_snapshot ON tab_events(snapshot_id);
+                CREATE INDEX IF NOT EXISTS idx_tab_identity_map_identity ON tab_identity_map(tab_identity_id);
+
+                INSERT INTO schema_version (version) VALUES (1);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        if (currentVersion < 2)
+        {
+            _logger.LogInformation("Running migration v2: sync_tab_node_id column");
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                ALTER TABLE tabs ADD COLUMN sync_tab_node_id TEXT;
+                CREATE INDEX IF NOT EXISTS idx_tabs_sync_node ON tabs(sync_tab_node_id);
+                INSERT INTO schema_version (version) VALUES (2);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
     public long SaveSnapshot(Snapshot snapshot)
     {
         using var transaction = _connection.BeginTransaction();
@@ -128,8 +207,8 @@ public class StorageService : IDisposable
                     using var tabCmd = _connection.CreateCommand();
                     tabCmd.CommandText = """
                         INSERT INTO tabs (window_id, tab_index, current_url, title, pinned,
-                            last_active_time, tab_group_token, extension_app_id, navigation_history)
-                        VALUES (@wid, @ti, @url, @title, @pinned, @lat, @tgt, @eai, @nav)
+                            last_active_time, tab_group_token, extension_app_id, sync_tab_node_id, navigation_history)
+                        VALUES (@wid, @ti, @url, @title, @pinned, @lat, @tgt, @eai, @stn, @nav)
                         """;
                     tabCmd.Parameters.AddWithValue("@wid", windowId);
                     tabCmd.Parameters.AddWithValue("@ti", tab.TabIndex);
@@ -140,6 +219,7 @@ public class StorageService : IDisposable
                         tab.LastActiveTime.HasValue ? (object)tab.LastActiveTime.Value.ToString("O") : DBNull.Value);
                     tabCmd.Parameters.AddWithValue("@tgt", (object?)tab.TabGroupToken ?? DBNull.Value);
                     tabCmd.Parameters.AddWithValue("@eai", (object?)tab.ExtensionAppId ?? DBNull.Value);
+                    tabCmd.Parameters.AddWithValue("@stn", (object?)tab.SyncTabNodeId ?? DBNull.Value);
                     tabCmd.Parameters.AddWithValue("@nav", JsonSerializer.Serialize(
                         tab.NavigationHistory.Select(n => new
                         {
@@ -308,6 +388,11 @@ public void BackupDatabase()
             throw;
         }
     }
+
+    /// <summary>
+    /// Exposes the connection for TabTrackingService to share the same transaction context.
+    /// </summary>
+    internal SqliteConnection Connection => _connection;
 
     public void Dispose()
     {
