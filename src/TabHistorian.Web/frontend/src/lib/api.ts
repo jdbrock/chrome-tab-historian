@@ -91,6 +91,12 @@ export async function fetchTabEvents(params: {
   return res.json();
 }
 
+export async function fetchTabCurrentState(tabIdentityId: number): Promise<TimelineTab> {
+  const res = await fetch(`${BASE}/tabmachine/tab/${tabIdentityId}`);
+  if (!res.ok) throw new Error(`Failed to fetch tab state: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchTimeline(timestamp: string, profile?: string): Promise<TimelineTab[]> {
   const sp = new URLSearchParams({ timestamp });
   if (profile) sp.set("profile", profile);

@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import {
   fetchSnapshots, fetchProfiles, fetchTabs,
-  fetchTabMachineStats, fetchTabMachineProfiles, searchTabMachine, fetchTabEvents, fetchTimeline,
+  fetchTabMachineStats, fetchTabMachineProfiles, searchTabMachine, fetchTabEvents, fetchTabCurrentState, fetchTimeline,
 } from "./api";
 
 export function useSnapshots() {
@@ -83,6 +83,14 @@ export function useTabEvents(params: {
     queryKey: ["tabmachine", "events", params.tabIdentityId, params.eventType, params.page],
     queryFn: () => fetchTabEvents(params),
     enabled: !!params.tabIdentityId,
+  });
+}
+
+export function useTabCurrentState(tabIdentityId: number | undefined) {
+  return useQuery({
+    queryKey: ["tabmachine", "tab", tabIdentityId],
+    queryFn: () => fetchTabCurrentState(tabIdentityId!),
+    enabled: !!tabIdentityId,
   });
 }
 

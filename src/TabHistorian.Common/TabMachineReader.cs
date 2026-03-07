@@ -310,6 +310,35 @@ public class TabMachineReader
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
+    public CurrentStateRow? GetTabCurrentState(long tabIdentityId)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.Parameters.AddWithValue("@id", tabIdentityId);
+        cmd.CommandText = """
+            SELECT cs.tab_identity_id, cs.current_url, cs.title, cs.pinned,
+                   cs.last_active_time, cs.tab_index, cs.window_index,
+                   cs.profile_name, cs.profile_display_name,
+                   cs.navigation_history, cs.is_open
+            FROM tab_current_state cs
+            WHERE cs.tab_identity_id = @id
+            """;
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+        var pn = reader.GetString(7);
+        return new CurrentStateRow(
+            reader.GetInt64(0), reader.GetString(1),
+            reader.IsDBNull(2) ? "" : reader.GetString(2),
+            !reader.IsDBNull(3) && reader.GetInt32(3) != 0,
+            reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+            reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+            pn,
+            ResolveDisplayName(pn, reader.IsDBNull(8) ? null : reader.GetString(8)),
+            reader.IsDBNull(9) ? null : reader.GetString(9),
+            !reader.IsDBNull(10) && reader.GetInt32(10) != 0);
+    }
+
     public List<CurrentStateRow> GetTimeline(string timestamp, string? profile)
     {
         using var conn = OpenConnection();

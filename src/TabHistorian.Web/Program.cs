@@ -114,6 +114,12 @@ tm.MapGet("/events", (TabMachineReader db, long? tabIdentityId, string? eventTyp
     return new { items, page = p, pageSize = size, totalCount };
 });
 
+tm.MapGet("/tab/{id:long}", (TabMachineReader db, long id) =>
+{
+    var state = db.GetTabCurrentState(id);
+    return state is not null ? Results.Ok(state) : Results.NotFound();
+});
+
 tm.MapGet("/timeline", (TabMachineReader db, string timestamp, string? profile) =>
     db.GetTimeline(timestamp, profile));
 

@@ -4,9 +4,11 @@ import { useState } from "react";
 import { ExternalLink, Clock, ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { faviconUrl, domainFromUrl, formatTimestamp, cleanTitle } from "@/lib/utils";
+import { useTabCurrentState } from "@/lib/hooks";
 import { EventTimeline } from "./event-timeline";
-import type { TabIdentity } from "@/lib/types";
+import type { TabIdentity, NavigationEntry } from "@/lib/types";
 
 interface TabIdentityCardProps {
   identity: TabIdentity;
@@ -14,6 +16,15 @@ interface TabIdentityCardProps {
 
 export function TabIdentityCard({ identity }: TabIdentityCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const { data: currentState, isLoading } = useTabCurrentState(
+    expanded ? identity.id : undefined
+  );
+
+  const navHistory: NavigationEntry[] = expanded && currentState?.navigationHistory
+    ? (typeof currentState.navigationHistory === "string"
+        ? JSON.parse(currentState.navigationHistory)
+        : currentState.navigationHistory) ?? []
+    : [];
 
   return (
     <Card className="border-border/50 overflow-hidden py-0 gap-0">
@@ -103,9 +114,95 @@ export function TabIdentityCard({ identity }: TabIdentityCardProps) {
       </div>
       {expanded && (
         <div className="border-t border-border/50">
-          <EventTimeline identity={identity} />
+          {isLoading ? (
+            <div className="p-4 space-y-2">
+              <Skeleton className="h-6 w-full" />
+              <Skeleton className="h-6 w-3/4" />
+            </div>
+          ) : (
+            <>
+              <NavigationHistorySection entries={navHistory} />
+              <EventsSection identity={identity} />
+            </>
+          )}
         </div>
       )}
     </Card>
+  );
+}
+
+function NavigationHistorySection({ entries }: { entries: NavigationEntry[] }) {
+  if (entries.length === 0) return null;
+
+  // Show in reverse chronological order (most recent first)
+  const reversed = [...entries].reverse();
+
+  return (
+    <div className="px-4 pt-3 pb-2">
+      <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        Navigation History
+      </h4>
+      <div className="space-y-1">
+        {reversed.map((entry, i) => (
+          <div key={i} className="flex items-start gap-2 py-1">
+            <div className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={faviconUrl(entry.url)}
+                  alt=""
+                  width={12}
+                  height={12}
+                  className="rounded-sm shrink-0"
+                />
+                <span className="text-sm truncate">
+                  {cleanTitle(entry.title) || domainFromUrl(entry.url)}
+                </span>
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 pl-[20px]">
+                <span className="truncate">{entry.url}</span>
+                {entry.timestamp && (
+                  <span className="shrink-0">{formatTimestamp(entry.timestamp)}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EventsSection({ identity }: { identity: TabIdentity }) {
+  const [showEvents, setShowEvents] = useState(false);
+
+  return (
+    <div className="border-t border-border/30">
+      <button
+        className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+        onClick={(e) => { e.stopPropagation(); setShowEvents(!showEvents); }}
+      >
+        {showEvents ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        <span className="uppercase tracking-wider font-medium">Events</span>
+        {identity.eventCount > 0 && (
+          <span className="text-muted-foreground/50">{identity.eventCount}</span>
+        )}
+      </button>
+      {showEvents && <EventTimeline identity={identity} />}
+    </div>
   );
 }
