@@ -67,6 +67,7 @@ export interface TabIdentity {
   isOpen: boolean;
   windowIndex: number;
   tabIndex: number;
+  navigationHistory?: string | null;
 }
 
 export interface TabIdentityResponse {

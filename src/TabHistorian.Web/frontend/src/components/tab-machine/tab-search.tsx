@@ -150,10 +150,10 @@ export function TabSearch() {
             <Skeleton key={i} className="h-24 w-full" />
           ))
         ) : viewMode === "window" ? (
-          <WindowGroupedFeed items={allItems} />
+          <WindowGroupedFeed items={allItems} searchQuery={query || undefined} />
         ) : (
           allItems.map((identity) => (
-            <TabIdentityCard key={identity.id} identity={identity} />
+            <TabIdentityCard key={identity.id} identity={identity} searchQuery={query || undefined} />
           ))
         )}
         {allItems.length === 0 && !isLoading && (
@@ -168,7 +168,7 @@ export function TabSearch() {
   );
 }
 
-function WindowGroupedFeed({ items }: { items: TabIdentity[] }) {
+function WindowGroupedFeed({ items, searchQuery }: { items: TabIdentity[]; searchQuery?: string }) {
   const groups: { key: string; profile: string; windowIndex: number; tabs: TabIdentity[] }[] = [];
 
   for (const item of items) {
@@ -203,7 +203,7 @@ function WindowGroupedFeed({ items }: { items: TabIdentity[] }) {
           </div>
           <div className="space-y-1.5">
             {group.tabs.map((identity) => (
-              <TabIdentityCard key={identity.id} identity={identity} />
+              <TabIdentityCard key={identity.id} identity={identity} searchQuery={searchQuery} />
             ))}
           </div>
         </div>

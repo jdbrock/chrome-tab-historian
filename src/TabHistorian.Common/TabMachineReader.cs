@@ -8,7 +8,8 @@ public record TabIdentityRow(
     string LastUrl, string LastTitle, string LastSeen,
     string? LastActiveTime, string? FirstActiveTime, string? LastNavigated,
     int EventCount, bool IsOpen,
-    int WindowIndex, int TabIndex);
+    int WindowIndex, int TabIndex,
+    string? NavigationHistory = null);
 
 public record TabEventRow(
     long Id, long TabIdentityId, string EventType, string Timestamp,
@@ -180,6 +181,9 @@ public class TabMachineReader
             orderBy = "ORDER BY COALESCE(ti.last_navigated, ti.last_active_time) DESC NULLS LAST, ti.last_seen DESC";
         }
 
+        var hasQuery = !string.IsNullOrWhiteSpace(query);
+        var navHistoryCol = hasQuery ? ", cs.navigation_history" : "";
+
         cmd.CommandText = $"""
             SELECT ti.id, ti.profile_name, cs.profile_display_name,
                    ti.first_url, ti.first_title, ti.first_seen,
@@ -189,6 +193,7 @@ public class TabMachineReader
                    COALESCE(cs.is_open, 0),
                    COALESCE(cs.window_index, 0),
                    COALESCE(cs.tab_index, 0)
+                   {navHistoryCol}
             FROM tab_identities ti
             LEFT JOIN tab_current_state cs ON cs.tab_identity_id = ti.id
             {windowJoin}
@@ -213,7 +218,8 @@ public class TabMachineReader
                 reader.GetInt32(12),
                 reader.GetInt32(13) != 0,
                 reader.GetInt32(14),
-                reader.GetInt32(15)));
+                reader.GetInt32(15),
+                hasQuery && !reader.IsDBNull(16) ? reader.GetString(16) : null));
         }
         return results;
     }
@@ -412,7 +418,7 @@ public class TabMachineReader
         if (!string.IsNullOrWhiteSpace(query))
         {
             cmd.Parameters.AddWithValue("@q", $"%{query}%");
-            conditions.Add("(ti.last_url LIKE @q OR ti.last_title LIKE @q OR ti.first_url LIKE @q OR ti.first_title LIKE @q)");
+            conditions.Add("(ti.last_url LIKE @q OR ti.last_title LIKE @q OR ti.first_url LIKE @q OR ti.first_title LIKE @q OR cs.navigation_history LIKE @q)");
         }
         if (!string.IsNullOrWhiteSpace(profile))
         {
